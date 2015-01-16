@@ -1,0 +1,7 @@
+.~*
+*~
+CPAN-Install-Parallel-*
+.build
+cpanfile
+metacpan-cache
+run.pl
