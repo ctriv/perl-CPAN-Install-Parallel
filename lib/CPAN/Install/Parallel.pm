@@ -30,6 +30,8 @@ has metacpan  => (
 	lazy    => 1,
 	builder => '_build_metacpan_client',
 );
+has 'cpanm_args' => (is => 'ro', isa => 'Str', default => '');
+
 
 __PACKAGE__->meta->make_immutable;
 
@@ -167,29 +169,45 @@ sub build_dependency_tree {
 sub walk_tree {
 	my ($self, $tree) = @_;
 
-	$self->_do_tree_walk($tree, {});
+	my $state = { ok => 1 };
+	$self->runner->data_callback(sub {
+		my ($ok) = @_;		
+		$state->{ok} = $ok;
+	});
+	
+	eval {
+		$self->_do_tree_walk($tree, {}, $state);
+	};
 	
 	$self->runner->finish();
 }
 
 sub _do_tree_walk {
-	my ($self, $tree, $seen) = @_;
+	my ($self, $tree, $seen, $state) = @_;
 	
 	foreach my $name (sort keys %$tree) {
+		last unless $state->{ok};
+		
 		next if $seen->{$name}++;
 		my $data = $tree->{$name};
 		
 		if (%{$data->{kids}}) {
-			$self->_do_tree_walk($data->{kids}, $seen);
+			$self->_do_tree_walk($data->{kids}, $seen, $state);
 		}
 		
-		$self->runner->run(sub {
-			my $sleep = rand(55) + 5;
-			print "[$$] starting $data->{name} - $data->{version} (sleep: $sleep)\n";
-			sleep($sleep);
-			print "[$$] done with $data->{name} - $data->{version}\n";
-		});
+		last unless $state->{ok};
+		$self->install_module($data);
 	}
+}
+
+sub install_module {
+	my ($self, $data) = @_;
+	my $args = $self->cpanm_args;
+	
+	$self->runner->run(sub {
+		system("cpanm $args $data->{url}");
+		return $? == 0;
+	});
 }
 
 sub _build_runner {
